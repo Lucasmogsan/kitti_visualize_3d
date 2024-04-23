@@ -10,7 +10,7 @@ from matplotlib.lines import Line2D
 import cv2
 
        
-def compute_3d_box_cam2(h, w, l, x, y, z, yaw):
+def compute_3d_box_cam(h, w, l, x, y, z, yaw):
     """
     Return : 3xn in cam2 coordinate
     """
@@ -23,47 +23,64 @@ def compute_3d_box_cam2(h, w, l, x, y, z, yaw):
     return corners_3d_cam2
 
 
-def read_detection(path):
+def read_detection(path, is_gt=False):
+
+    # Check if file is empty
+    if os.path.getsize(path) <= 0:
+        return pd.DataFrame()
     df = pd.read_csv(path, header=None, sep=' ')
-    df.columns = ['type', 'truncated', 'occluded', 'alpha', 'bbox_left', 'bbox_top',
-                'bbox_right', 'bbox_bottom', 'height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']
+    if is_gt:
+        df.columns = ['type', 'truncated', 'occluded', 'alpha', 'bbox_left', 'bbox_top',
+                      'bbox_right', 'bbox_bottom', 'height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']
+    else:
+        df.columns = ['type', 'truncated', 'occluded', 'alpha', 'bbox_left', 'bbox_top',
+                      'bbox_right', 'bbox_bottom', 'height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y', 'score']
 #     df.loc[df.type.isin(['Truck', 'Van', 'Tram']), 'type'] = 'Car'
 #     df = df[df.type.isin(['Car', 'Pedestrian', 'Cyclist'])]
     df = df[df['type']=='Car']
     df.reset_index(drop=True, inplace=True)
     return df
 
-img_id = 10
 
-calib = Calibration('/home/lucas/KITTI_VIZ_3D/calib/%06d.txt'%img_id)
-
-path_img = '/home/lucas/KITTI_VIZ_3D/image_2/%06d.png'%img_id
-
-df = read_detection('/home/lucas/KITTI_VIZ_3D/label_2/%06d.txt'%img_id)
-
-
-image = cv2.imread(path_img)
-df.head()
-
-print(f'{len(df)} object detected in image {img_id}')
-
-
-##############plot 3D box#####################
-for o in range(len(df)):
-    corners_3d_cam2 = compute_3d_box_cam2(*df.loc[o, ['height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']])
-    pts_2d = calib.project_rect_to_image(corners_3d_cam2.T)
-    image = draw_projected_box3d(image, pts_2d, color=(255,0,255), thickness=1)
-
-cv2.imwrite(str(img_id) + '_test_file_img.png', image)
+def get_data(img_id):
+    path_img = '/home/lucas/kitti_visualize_3d/image_2/%06d.png'%img_id
+    calib = Calibration('/home/lucas/kitti_visualize_3d/calib/%06d.txt'%img_id)
+    gt = read_detection('/home/lucas/kitti_visualize_3d/label_2/%06d.txt'%img_id, is_gt=True)
+    df = read_detection('/home/lucas/kitti_visualize_3d/outputs/data/%06d.txt'%img_id, is_gt=False)
+    return calib, path_img, gt, df
 
 
 
-##############plot 3D box in 3D#####################
-def plot_3d_box(ax, corners_3d_cam2, color='b'):
+
+def plot_2d(path_img, df, gt, calib):
+    """
+    
+
+    """
+    image = cv2.imread(path_img)
+    # Plot the ground truth 3D bounding boxes on the image
+    for o in range(len(gt)):
+        corners_3d = compute_3d_box_cam(*gt.loc[o, ['height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']])
+        pts_2d = calib.project_rect_to_image(corners_3d.T)
+        image_gt = draw_projected_box3d(image, pts_2d, color=(0,255,0), thickness=1)
+
+    # Plot the projected 3D bounding boxes on the image
+    for o in range(len(df)):
+        corners_3d = compute_3d_box_cam(*df.loc[o, ['height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']])
+        pts_2d = calib.project_rect_to_image(corners_3d.T)
+        image_dt = draw_projected_box3d(image_gt, pts_2d, color=(255,0,255), thickness=1)
+
+    img_id = path_img.split('/')[-1].split('.')[0]
+    cv2.imwrite(str(img_id) + '_gt_and_pred.png', image_dt)
+
+
+
+
+def draw_3d_box(ax, corners_3d_cam, color='b'):
     """
     Plot a 3D bounding box on a given Axes3D (ax)
 
-    corners_3d_cam2: 8 corners of the box in camera coordinates (3x8 array)
+    corners_3d_cam: 8 corners of the box in camera coordinates (3x8 array)
     color: color of the box
     """
     # Create connections between corners (indices in the corners array)
@@ -74,23 +91,45 @@ def plot_3d_box(ax, corners_3d_cam2, color='b'):
     ]
 
     for connection in connections:
-        ax.plot(*corners_3d_cam2[:, connection], c=color)
+        ax.plot(*corners_3d_cam[:, connection], c=color)
 
-# Create a new 3D plot
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
+def plot_3d(df=None, gt=None):
+    # Create a new 3D plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
 
-# Plot each 3D box
-for o in range(len(df)):
-    corners_3d_cam2 = compute_3d_box_cam2(*df.loc[o, ['height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']])
-    plot_3d_box(ax, corners_3d_cam2)
+    # Plot predicted 3D boxes
+    if df is not None:
+        for o in range(len(df)):
+            corners_3d_df = compute_3d_box_cam(*df.loc[o, ['height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']])
+            draw_3d_box(ax, corners_3d_df, color='purple')
+    else:
+        print('No predicted boxes to plot')
 
-# Set plot limits and labels
-ax.set_xlim([-15, 15])
-ax.set_ylim([0, 30])
-ax.set_zlim([0, 30])
-ax.set_xlabel('X')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
+    # Plot ground truth 3D boxes
+    if gt is not None:
+        for o in range(len(gt)):
+            corners_3d_gt = compute_3d_box_cam(*gt.loc[o, ['height', 'width', 'length', 'pos_x', 'pos_y', 'pos_z', 'rot_y']])
+            draw_3d_box(ax, corners_3d_gt, color='green')
+    else:
+        print('No ground truth boxes to plot')
 
-plt.show()
+    # Set plot limits and labels
+    ax.set_xlim([-15, 15])
+    ax.set_ylim([0, 30])
+    ax.set_zlim([0, 30])
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    # Save the figure
+    plt.show()
+
+
+if __name__ == '__main__':
+    img_id = 8
+    calib, path_img, gt, df = get_data(img_id)
+
+    plot_2d(path_img, df, gt, calib)
+
+    plot_3d(df, gt)
