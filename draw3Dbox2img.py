@@ -42,12 +42,13 @@ def read_detection(path, is_gt=False):
     return df
 
 
-def get_data(img_id):
-    path_img = '/home/lucas/kitti_visualize_3d/image_2/%06d.png'%img_id
-    calib = Calibration('/home/lucas/kitti_visualize_3d/calib/%06d.txt'%img_id)
-    gt = read_detection('/home/lucas/kitti_visualize_3d/label_2/%06d.txt'%img_id, is_gt=True)
-    df = read_detection('/home/lucas/kitti_visualize_3d/outputs/data/%06d.txt'%img_id, is_gt=False)
-    return calib, path_img, gt, df
+def get_data(curr_path, img_id):
+    path_img = os.path.join(curr_path, 'image_2/%06d.png'%img_id)
+
+    calib = Calibration(os.path.join(curr_path, 'calib/%06d.txt'%img_id))
+    ground_truth = read_detection(os.path.join(curr_path, 'label_2/%06d.txt'%img_id), is_gt=True)
+    predicted = read_detection(os.path.join(curr_path, 'outputs/data/%06d.txt'%img_id), is_gt=False)
+    return calib, path_img, ground_truth, predicted
 
 
 
@@ -128,7 +129,10 @@ def plot_3d(df=None, gt=None):
 
 if __name__ == '__main__':
     img_id = 8
-    calib, path_img, gt, df = get_data(img_id)
+    cur_path = os.path.dirname(os.path.realpath(__file__))
+
+
+    calib, path_img, gt, df = get_data(cur_path, img_id)
 
     plot_2d(path_img, df, gt, calib)
 
