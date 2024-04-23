@@ -1,12 +1,8 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.patches as patches
-import yaml
 import pandas as pd
-from kitti_util import *
-from matplotlib.lines import Line2D
+from kitti_util import Calibration, draw_projected_box3d
 import cv2
 
        
